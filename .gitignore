@@ -1,0 +1,15 @@
+# Node & frontend stuff
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# Python & backend stuff
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+
+# OS & IDE
+.DS_Store
+*.swp
+*.swo
