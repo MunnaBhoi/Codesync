@@ -18,23 +18,77 @@ import json
 # ----------------- Load .env -----------------
 load_dotenv()
 
-# ----------------- Redis Setup -----------------
-REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+# ----------------- Redis Setup (robust, avoid passing ssl kwarg) -----------------
+import urllib.parse
+
+REDIS_URL = os.environ.get("REDIS_URL", None)
 GRACE_TTL = 300  # 5 min grace period for empty rooms
 
-r = None
+_real_redis = None
 try:
-    # redis.from_url handles redis:// and rediss://; set ssl True for rediss://
-    r = redis.from_url(
-        REDIS_URL,
-        decode_responses=True,
-        ssl=REDIS_URL.startswith("rediss://")
-    )
-    # optional quick sanity check (will raise if fails)
-    # r.ping()
+    if REDIS_URL:
+        # Try a normal from_url WITHOUT passing ssl kwarg.
+        # redis.from_url usually understands redis:// and rediss:// schemes.
+        _real_redis = redis.from_url(REDIS_URL, decode_responses=True)
+        # quick sanity check
+        try:
+            _real_redis.ping()
+        except Exception as e_ping:
+            logging.getLogger(__name__).warning(f"Redis ping after init failed: {e_ping}")
+            _real_redis = None
+except TypeError as te:
+    # This handles the exact error you hit where the connection class didn't accept 'ssl'.
+    logging.getLogger(__name__).warning(f"Redis.from_url TypeError (ssl kwarg issue): {te} | REDIS_URL={REDIS_URL}")
+    _real_redis = None
 except Exception as e:
-    logging.getLogger(__name__).warning(f"Redis init failed: {e} | REDIS_URL={REDIS_URL}")
-    r = None
+    logging.getLogger(__name__).warning(f"Redis init error: {e} | REDIS_URL={REDIS_URL}")
+    _real_redis = None
+
+# In-memory fallback implementation (minimal Redis-like API used by app)
+class InMemoryRedisFallback:
+    def __init__(self):
+        self._kv = {}
+        self._sets = {}
+    def set(self, key, value, ex=None):
+        self._kv[key] = value
+        return True
+    def get(self, key):
+        return self._kv.get(key)
+    def delete(self, key):
+        if key in self._kv:
+            del self._kv[key]
+            return 1
+        return 0
+    def exists(self, key):
+        return 1 if key in self._kv else 0
+    def sadd(self, key, member):
+        s = self._sets.setdefault(key, set())
+        s.add(member)
+        return 1
+    def srem(self, key, member):
+        s = self._sets.get(key, set())
+        if member in s:
+            s.remove(member)
+            return 1
+        return 0
+    def smembers(self, key):
+        return self._sets.get(key, set())
+    def expire(self, key, ttl):
+        # no-op for in-memory fallback
+        return True
+    def ping(self):
+        return True
+    def keys(self, pattern="*"):
+        if pattern == "*":
+            return list(self._kv.keys())
+        return [k for k in self._kv.keys() if pattern in k]
+
+if _real_redis:
+    r = _real_redis
+    logging.getLogger(__name__).info(f"Using real Redis (url startswith: {REDIS_URL[:10]}...)")
+else:
+    r = InMemoryRedisFallback()
+    logging.getLogger(__name__).warning("Redis unavailable or incompatible — using in-memory fallback. Data will NOT persist across restarts.")
 
 def room_files_key(room):
     return f"room:{room}:files"
