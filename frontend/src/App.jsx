@@ -34,6 +34,10 @@ function App() {
   // Chat
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
+  const chatOpenRef = useRef(chatOpen);
+  useEffect(() => {
+    chatOpenRef.current = chatOpen;
+  }, [chatOpen]);
 
   // Toasts (minimal local toast system)
   const [toasts, setToasts] = useState([]);
@@ -84,7 +88,9 @@ function App() {
     if (!joined || !room) return;
 
     const safeUser =
-      displayName || username?.trim() || `Guest${Math.floor(Math.random() * 1000)}`;
+      displayName ||
+      username?.trim() ||
+      `Guest${Math.floor(Math.random() * 1000)}`;
 
     // Emit join once here — central place for emitting join
     try {
@@ -113,7 +119,8 @@ function App() {
       setFiles((prev) => ({ ...prev, [file]: { code } }));
     };
 
-    const onParticipants = (data) => setParticipants(data?.participants ?? []);
+    const onParticipants = (data) =>
+      setParticipants(data?.participants ?? []);
 
     const onSystemMessage = (data) =>
       data?.msg && pushToast(data.msg);
@@ -160,14 +167,21 @@ function App() {
     };
 
     const onChat = (msg) => {
-      // server will broadcast messages to other clients only (server emits include_self=False)
-      // so here we just append received messages from OTHER participants
+      // server broadcasts messages (including sender), we append them here only
       if (!msg) return;
       setChatMessages((prev) => [...prev, msg]);
+
       const sender = msg?.user || "Unknown";
       const text = msg?.message || "";
-      if (!chatOpen && sender !== (displayName || username) && text.trim()) {
-        const preview = text.length > 60 ? text.slice(0, 57) + "..." : text;
+      const isChatOpen = chatOpenRef.current;
+
+      if (
+        !isChatOpen &&
+        sender !== (displayName || username) &&
+        text.trim()
+      ) {
+        const preview =
+          text.length > 60 ? text.slice(0, 57) + "..." : text;
         pushToast(`${sender}: ${preview}`);
       }
     };
@@ -188,14 +202,18 @@ function App() {
         if (socket && socket.connected) {
           socket.emit("leave_room", { room, user: safeUser });
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
 
       try {
         const payload = JSON.stringify({ room, user: safeUser });
         const url = API_BASE + "/leave_room";
         const blob = new Blob([payload], { type: "application/json" });
         navigator.sendBeacon(url, blob);
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     };
 
     window.addEventListener("beforeunload", beforeUnload);
@@ -215,19 +233,28 @@ function App() {
       // cleanup beforeunload
       window.removeEventListener("beforeunload", beforeUnload);
 
-      // best-effort notify server on component unmount
+      // best-effort notify server on component unmount / room change
       try {
         socket.emit("leave_room", { room, user: safeUser });
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [joined, room, displayName, username, chatOpen]);
+  }, [joined, room, displayName, username]); // <-- removed chatOpen here
 
   // ----- Code change -----
   const handleCodeChange = (newCode) => {
     if (!activeFile) return;
     setFiles((prev) => ({ ...prev, [activeFile]: { code: newCode } }));
-    if (room) try { socket.emit("code_change", { room, file: activeFile, code: newCode }); } catch (e) {}
+    if (room)
+      try {
+        socket.emit("code_change", {
+          room,
+          file: activeFile,
+          code: newCode,
+        });
+      } catch (e) {}
   };
 
   // ----- Run code (Judge0) -----
@@ -260,7 +287,8 @@ function App() {
 
   // ----- Room ops -----
   const createRoom = async () => {
-    const safe = username?.trim() || `Guest${Math.floor(Math.random() * 1000)}`;
+    const safe =
+      username?.trim() || `Guest${Math.floor(Math.random() * 1000)}`;
     try {
       const res = await fetch(API_BASE + "/create_room", {
         method: "POST",
@@ -269,7 +297,8 @@ function App() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const err = data?.error || data?.message || `Server ${res.status}`;
+        const err =
+          data?.error || data?.message || `Server ${res.status}`;
         pushToast("Error creating room: " + err);
         console.error("create_room failed", res.status, data);
         return;
@@ -294,7 +323,8 @@ function App() {
 
   const joinRoom = async () => {
     if (!room) return pushToast("Enter room id");
-    const safe = username?.trim() || `Guest${Math.floor(Math.random() * 1000)}`;
+    const safe =
+      username?.trim() || `Guest${Math.floor(Math.random() * 1000)}`;
     try {
       const res = await fetch(API_BASE + "/join_room", {
         method: "POST",
@@ -335,13 +365,11 @@ function App() {
   };
 
   const leaveRoom = () => {
-    const safe = displayName || username?.trim() || "Guest";
+    // explicit emit removed; effect cleanup handles leave_room
     try {
-      socket.emit("leave_room", { room, user: safe });
-    } catch (e) { /* ignore */ }
-
-    // clear persisted state so next load doesn't auto-rejoin
-    try { localStorage.removeItem("codesync_room"); localStorage.removeItem("codesync_user"); } catch (e) {}
+      localStorage.removeItem("codesync_room");
+      localStorage.removeItem("codesync_user");
+    } catch (e) {}
 
     setJoined(false);
     setRoom("");
@@ -352,6 +380,7 @@ function App() {
     setDisplayName("");
     setAiOpen(false);
     setChatOpen(false);
+    setChatMessages([]);
   };
 
   // ----- File ops -----
@@ -359,21 +388,27 @@ function App() {
     const name = prompt("Enter file name (e.g. app.js):");
     if (!name) return;
     if (files[name]) return pushToast("File already exists");
-    try { socket.emit("file_create", { room, filename: name }); } catch (e) {}
+    try {
+      socket.emit("file_create", { room, filename: name });
+    } catch (e) {}
     setActiveFile(name);
   };
 
   const deleteFile = (filename) => {
     if (!filename) return;
     if (!window.confirm(`Delete ${filename}?`)) return;
-    try { socket.emit("file_delete", { room, filename }); } catch (e) {}
+    try {
+      socket.emit("file_delete", { room, filename });
+    } catch (e) {}
   };
 
   const renameFile = (oldName) => {
     const newName = prompt("New file name:", oldName);
     if (!newName || newName === oldName) return;
     if (files[newName]) return pushToast("A file with that name exists");
-    try { socket.emit("file_rename", { room, old: oldName, new: newName }); } catch (e) {}
+    try {
+      socket.emit("file_rename", { room, old: oldName, new: newName });
+    } catch (e) {}
   };
 
   // ----- AI -----
@@ -416,13 +451,21 @@ function App() {
   };
 
   // ----- Chat send helper -----
-  // Append locally for immediate sender view, server will broadcast to others only
+  // Now we rely ONLY on server broadcast (onChat) to append messages,
+  // to avoid duplicates for the sender.
   const sendChat = (msg) => {
-    const safe = displayName || username || `Guest${Math.floor(Math.random() * 1000)}`;
+    const safe =
+      displayName || username || `Guest${Math.floor(Math.random() * 1000)}`;
     if (!msg || !msg.trim()) return;
-    const localMsg = { user: safe, message: msg, timestamp: new Date().toLocaleTimeString() };
-    setChatMessages((prev) => [...prev, localMsg]);
-    try { socket.emit("chat_message", { room, user: safe, message: msg, timestamp: localMsg.timestamp }); } catch (e) {}
+    const timestamp = new Date().toLocaleTimeString();
+    try {
+      socket.emit("chat_message", {
+        room,
+        user: safe,
+        message: msg,
+        timestamp,
+      });
+    } catch (e) {}
   };
 
   // ----- Resizable editor (two-way) -----
@@ -445,7 +488,10 @@ function App() {
       const ch = container.clientHeight;
       // reserve ~48px for control bar + a bit padding
       const controlBar = 48;
-      const defaultEditor = Math.max(Math.min(Math.floor(ch * 0.7), ch - minOutput - controlBar), minEditor);
+      const defaultEditor = Math.max(
+        Math.min(Math.floor(ch * 0.7), ch - minOutput - controlBar),
+        minEditor
+      );
       setEditorHeight(defaultEditor);
     };
     init();
@@ -466,7 +512,10 @@ function App() {
       if (outputCollapsed) return;
       // clamp so editor >= minEditor and output >= minOutput
       const maxEditor = containerHeight - minOutput - controlBar;
-      const newHeight = Math.min(Math.max(startHeight + delta, minEditor), Math.max(maxEditor, minEditor));
+      const newHeight = Math.min(
+        Math.max(startHeight + delta, minEditor),
+        Math.max(maxEditor, minEditor)
+      );
       setEditorHeight(newHeight);
     };
 
@@ -484,12 +533,17 @@ function App() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-cyan-900 via-gray-950 to-black text-white flex flex-col items-center justify-center p-6">
         <div className="text-center mb-10">
-          <img 
-          src="/Codesync.png" 
-          alt="Logo" 
-          className="w-32 h-32 mx-auto mb-6 object-contain"/>
-            <h1 className="text-6xl font-extrabold mb-3 text-cyan-400">CodeSync</h1>
-            <p className="text-lg text-gray-400">Real-time collaborative coding platform</p>
+          <img
+            src="/Codesync.png"
+            alt="Logo"
+            className="w-32 h-32 mx-auto mb-6 object-contain"
+          />
+          <h1 className="text-6xl font-extrabold mb-3 text-cyan-400">
+            CodeSync
+          </h1>
+          <p className="text-lg text-gray-400">
+            Real-time collaborative coding platform
+          </p>
         </div>
         <div className="bg-gray-800/60 backdrop-blur-lg border border-gray-700 rounded-xl p-6 w-full max-w-md space-y-4">
           <input
@@ -543,10 +597,10 @@ function App() {
       <div className="flex justify-between items-start mb-4">
         <div>
           <div className="flex items-center gap-2">
-            <img 
-            src="Codesync.png" 
-            alt="CodeSync Logo" 
-            className="w-8 h-8"
+            <img
+              src="Codesync.png"
+              alt="CodeSync Logo"
+              className="w-8 h-8"
             />
             <h1 className="text-3xl font-bold text-cyan-400">CodeSync</h1>
           </div>
@@ -578,7 +632,9 @@ function App() {
               </div>
             )}
           </div>
-          <span className="text-xs text-gray-400">{participants.length} online</span>
+          <span className="text-xs text-gray-400">
+            {participants.length} online
+          </span>
 
           <button
             onClick={() => setChatOpen((v) => !v)}
@@ -601,7 +657,9 @@ function App() {
         {/* Sidebar */}
         <div className="w-60 flex flex-col bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
           <div className="flex justify-between items-center bg-gray-800 px-3 py-2 border-b border-gray-700">
-            <span className="text-sm font-semibold text-gray-200">Files</span>
+            <span className="text-sm font-semibold text-gray-200">
+              Files
+            </span>
             <button
               onClick={createFile}
               className="text-xs bg-green-600 hover:bg-green-700 px-2 py-1 rounded"
@@ -614,7 +672,9 @@ function App() {
               <div
                 key={fname}
                 className={`flex justify-between items-center px-3 py-1 text-sm cursor-pointer ${
-                  activeFile === fname ? "bg-gray-700 border-l-4 border-cyan-500" : "hover:bg-gray-800"
+                  activeFile === fname
+                    ? "bg-gray-700 border-l-4 border-cyan-500"
+                    : "hover:bg-gray-800"
                 }`}
                 onClick={() => setActiveFile(fname)}
               >
@@ -655,12 +715,18 @@ function App() {
             <div
               className={
                 "rounded-xl border border-gray-700 bg-gray-800/40 editor-scrollbar " +
-                (outputCollapsed ? "flex-1 overflow-auto min-h-0" : "overflow-auto")
+                (outputCollapsed
+                  ? "flex-1 overflow-auto min-h-0"
+                  : "overflow-auto")
               }
               style={
                 outputCollapsed
                   ? { flex: "1 1 0%", minHeight: "150px" }
-                  : { height: `${editorHeight}px`, minHeight: "150px", flexShrink: 0 }
+                  : {
+                      height: `${editorHeight}px`,
+                      minHeight: "150px",
+                      flexShrink: 0,
+                    }
               }
             >
               <CodeEditor
@@ -771,7 +837,9 @@ function App() {
                 {loading ? (
                   <div className="text-gray-400 italic">Running code...</div>
                 ) : (
-                  <pre className="whitespace-pre-wrap font-mono text-gray-200">{output || "No output yet"}</pre>
+                  <pre className="whitespace-pre-wrap font-mono text-gray-200">
+                    {output || "No output yet"}
+                  </pre>
                 )}
               </div>
             )}
@@ -838,7 +906,9 @@ function App() {
                   <option>Java</option>
                   <option>C++</option>
                 </select>
-                <span className="text-sm text-gray-400">Target language</span>
+                <span className="text-sm text-gray-400">
+                  Target language
+                </span>
               </div>
             )}
 
