@@ -484,8 +484,12 @@ function App() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-cyan-900 via-gray-950 to-black text-white flex flex-col items-center justify-center p-6">
         <div className="text-center mb-10">
-          <h1 className="text-6xl font-extrabold mb-3 text-cyan-400">CodeSync</h1>
-          <p className="text-lg text-gray-400">Real-time collaborative coding platform</p>
+          <img 
+          src="/Codesync.png" 
+          alt="Logo" 
+          className="w-32 h-32 mx-auto mb-6 object-contain"/>
+            <h1 className="text-6xl font-extrabold mb-3 text-cyan-400">CodeSync</h1>
+            <p className="text-lg text-gray-400">Real-time collaborative coding platform</p>
         </div>
         <div className="bg-gray-800/60 backdrop-blur-lg border border-gray-700 rounded-xl p-6 w-full max-w-md space-y-4">
           <input
@@ -538,7 +542,14 @@ function App() {
       {/* Top bar */}
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h1 className="text-3xl font-bold text-cyan-400">CodeSync</h1>
+          <div className="flex items-center gap-2">
+            <img 
+            src="Codesync.png" 
+            alt="CodeSync Logo" 
+            className="w-8 h-8"
+            />
+            <h1 className="text-3xl font-bold text-cyan-400">CodeSync</h1>
+          </div>
           <div className="flex items-center gap-3 mt-1">
             <span className="text-sm text-gray-400">Room: {room}</span>
             <button
