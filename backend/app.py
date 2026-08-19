@@ -272,13 +272,13 @@ def ai_suggestions():
                 f"Convert this code into {target_lang}:\n{code}\n\n"
                 "Output ONLY the converted code."
             )
-            response = gemini_client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=user_prompt
-            )
+        response = gemini_client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=user_prompt
+        )
 
-            text = response.text.strip()
-            return jsonify({"result": text})
+        text = response.text.strip()
+        return jsonify({"result": text})
 
     except Exception as e:
         logger.exception("AI error")
