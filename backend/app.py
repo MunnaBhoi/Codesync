@@ -10,7 +10,7 @@ import time
 import uuid
 import logging
 from dotenv import load_dotenv
-from openai import OpenAI
+from google import genai
 from datetime import datetime
 import redis
 import json
@@ -124,9 +124,9 @@ HEADERS = {
     "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com"
 }
 
-# ----------------- OpenAI Setup -----------------
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+# ----------------- Gemini Setup -----------------
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ----------------- Utility Routes -----------------
 @app.route("/health", methods=["GET"])
@@ -272,15 +272,13 @@ def ai_suggestions():
                 f"Convert this code into {target_lang}:\n{code}\n\n"
                 "Output ONLY the converted code."
             )
+            response = gemini_client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=user_prompt
+            )
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": user_prompt}],
-            temperature=0.3,
-        )
-
-        text = response.choices[0].message.content.strip()
-        return jsonify({"result": text})
+            text = response.text.strip()
+            return jsonify({"result": text})
 
     except Exception as e:
         logger.exception("AI error")

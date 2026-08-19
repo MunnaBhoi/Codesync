@@ -6,4 +6,4 @@ eventlet
 python-dotenv
 redis
 gunicorn==22.0.0
-openai
+google-genai
